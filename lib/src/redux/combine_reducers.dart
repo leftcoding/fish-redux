@@ -17,10 +17,13 @@ Reducer<T>? combineSubReducers<T>(Iterable<SubReducer<T>?> subReducers) {
   }
 
   return (T state, Action action) {
-    T? _copy;
+    T _copy = state;
     bool hasChanged = false;
     for (SubReducer<T>? subReducer in notNullReducers) {
-      _copy = subReducer?.call(state, action, hasChanged);
+      if(subReducer == null) {
+        continue;
+      }
+      _copy = subReducer(_copy, action, hasChanged);
       hasChanged = hasChanged || _copy != state;
     }
     assert(_copy != null);
