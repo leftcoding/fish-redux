@@ -4,6 +4,7 @@ import '../redux/basic.dart';
 import 'basic.dart';
 import 'context.dart';
 import 'dependencies.dart';
+import 'helper.dart';
 import 'lifecycle.dart';
 import 'logic.dart';
 
@@ -12,34 +13,39 @@ typedef WidgetWrapper = Widget Function(Widget child);
 
 @immutable
 abstract class Component<T> extends Logic<T> implements AbstractComponent<T> {
-  final ViewBuilder<T> _view;
+  /// 可空 #47
+  final ViewBuilder<T>? _view;
   final ShouldUpdate<T> _shouldUpdate;
   final WidgetWrapper _wrapper;
   final bool _clearOnDependenciesChanged;
 
-  ViewBuilder<T> get protectedView => _view;
+  /// 可空 #16
+  ViewBuilder<T>? get protectedView => _view;
   ShouldUpdate<T> get protectedShouldUpdate => _shouldUpdate;
   WidgetWrapper get protectedWrapper => _wrapper;
   bool get protectedClearOnDependenciesChanged => _clearOnDependenciesChanged;
 
+  /// 可空 【component_extensions.dart#14】 view？ reducer? effect?
   Component({
-    @required ViewBuilder<T> view,
-    Reducer<T> reducer,
-    ReducerFilter<T> filter,
-    Effect<T> effect,
-    Dependencies<T> dependencies,
-    ShouldUpdate<T> shouldUpdate,
-    WidgetWrapper wrapper,
+    /// 可空
+    @required ViewBuilder<T>? view,
+    /// 可空
+    Reducer<T>? reducer,
+    ReducerFilter<T>? filter,
+    /// 可空
+    Effect<T>? effect,
+    Dependencies<T>? dependencies,
+    ShouldUpdate<T>? shouldUpdate,
+    WidgetWrapper? wrapper,
 
     /// implement [StateKey] in T instead of using key in Logic.
     /// class T implements StateKey {
     ///   Object _key = UniqueKey();
     ///   Object key() => _key;
     /// }
-    @deprecated Key Function(T) key,
+    @deprecated  Key Function(T)? key,
     bool clearOnDependenciesChanged = false,
-  })  : assert(view != null),
-        _view = view,
+  })  : _view = view,
         _wrapper = wrapper ?? _wrapperByDefault,
         _shouldUpdate = shouldUpdate ?? updateByDefault<T>(),
         _clearOnDependenciesChanged = clearOnDependenciesChanged,
@@ -55,29 +61,22 @@ abstract class Component<T> extends Logic<T> implements AbstractComponent<T> {
   @override
   Widget buildComponent(
     Store<Object> store,
-    Get<Object> getter, {
-    @required DispatchBus bus,
-    @required Enhancer<Object> enhancer,
+    Get<T> getter, {
+    required DispatchBus bus,
+    required Enhancer<Object> enhancer,
   }) {
     /// Check bus: DispatchBusDefault(); enhancer: EnhancerDefault<Object>();
     assert(bus != null && enhancer != null);
 
     return protectedWrapper(
-      isPureView()
-          ? _PureViewWidget<T>(
-              store: store,
-              viewBuilder: enhancer.viewEnhance(protectedView, this, store),
-              getter: getter,
-              bus: bus,
-            )
-          : ComponentWidget<T>(
-              component: this,
-              getter: _asGetter<T>(getter),
-              store: store,
-              key: key(getter()),
-              bus: bus,
-              enhancer: enhancer,
-            ),
+      ComponentWidget<T>(
+        component: this,
+        getter: asGetter<T>(getter),
+        store: store,
+        key: key(getter() as T) as Key,
+        bus: bus,
+        enhancer: enhancer,
+      ),
     );
   }
 
@@ -86,9 +85,9 @@ abstract class Component<T> extends Logic<T> implements AbstractComponent<T> {
     Store<Object> store,
     BuildContext buildContext,
     Get<T> getState, {
-    @required void Function() markNeedsBuild,
-    @required DispatchBus bus,
-    @required Enhancer<Object> enhancer,
+     void Function()? markNeedsBuild,
+    required DispatchBus bus,
+    required Enhancer<Object> enhancer,
   }) {
     assert(bus != null && enhancer != null);
     return ComponentContext<T>(
@@ -96,7 +95,7 @@ abstract class Component<T> extends Logic<T> implements AbstractComponent<T> {
       store: store,
       buildContext: buildContext,
       getState: getState,
-      view: enhancer.viewEnhance(protectedView, this, store),
+      view: enhancer.viewEnhance(protectedView, this, store)!,
       shouldUpdate: protectedShouldUpdate,
       name: name,
       markNeedsBuild: markNeedsBuild,
@@ -116,73 +115,34 @@ abstract class Component<T> extends Logic<T> implements AbstractComponent<T> {
 
   String get name => cache<String>('name', () => runtimeType.toString());
 
-  bool isPureView() {
-    return protectedReducer == null &&
-        protectedEffect == null &&
-        protectedDependencies == null;
-  }
-
   static ShouldUpdate<K> neverUpdate<K>() => (K _, K __) => false;
 
   static ShouldUpdate<K> alwaysUpdate<K>() => (K _, K __) => true;
 
   static ShouldUpdate<K> updateByDefault<K>() =>
-      (K _, K __) => !identical(_, __);
+      (K a, K b) => !identical(a, b);
 
   static Widget _wrapperByDefault(Widget child) => child;
-
-  static Get<T> _asGetter<T>(Get<Object> getter) {
-    Get<T> runtimeGetter;
-    if (getter is Get<T>) {
-      runtimeGetter = getter;
-    } else {
-      runtimeGetter = () {
-        final T result = getter();
-        return result;
-      };
-    }
-    return runtimeGetter;
-  }
-}
-
-class _PureViewWidget<T> extends StatelessWidget {
-  final ViewBuilder<T> viewBuilder;
-  final Get<Object> getter;
-  final DispatchBus bus;
-  final Store<Object> store;
-
-  const _PureViewWidget({
-    @required this.viewBuilder,
-    @required this.getter,
-    @required this.bus,
-    @required this.store,
-  });
-
-  @override
-  Widget build(BuildContext context) => viewBuilder(
-        getter(),
-        (Action action) {
-          store.dispatch(action);
-          bus.dispatch(action);
-        },
-        PureViewViewService(bus, context),
-      );
 }
 
 class ComponentWidget<T> extends StatefulWidget {
   final Component<T> component;
   final Store<Object> store;
   final Get<T> getter;
+  /// 可空
   final DispatchBus bus;
+  /// 可空
   final Enhancer<Object> enhancer;
 
   const ComponentWidget({
-    @required this.component,
-    @required this.store,
-    @required this.getter,
-    this.bus,
-    this.enhancer,
-    Key key,
+    required this.component,
+    required this.store,
+    required this.getter,
+    ///todo（不确定）
+    required this.bus,
+    ///todo（不确定）
+    required this.enhancer,
+    Key? key,
   })  : assert(component != null),
         assert(store != null),
         assert(getter != null),
@@ -193,7 +153,7 @@ class ComponentWidget<T> extends StatefulWidget {
 }
 
 class ComponentState<T> extends State<ComponentWidget<T>> {
-  ComponentContext<T> _ctx;
+  late ComponentContext<T> _ctx;
 
   ComponentContext<T> get ctx => _ctx;
 

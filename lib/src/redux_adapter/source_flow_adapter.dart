@@ -6,58 +6,26 @@ import '../redux_component/redux_component.dart';
 import '../utils/utils.dart';
 import 'recycle_context.dart';
 
-/// Use [AdapterSource] instead of [List<ItemItemBean>]
-abstract class AdapterSource {
-  int get itemCount;
-
-  String getItemType(int index);
-
-  Object getItemData(int index);
-
-  AdapterSource updateItemData(int index, Object data, bool isStateCopied);
-}
-
-abstract class MutableSource extends AdapterSource {
-  @mustCallSuper
-  @override
-  MutableSource updateItemData(int index, Object data, bool isStateCopied) {
-    final MutableSource result = isStateCopied ? this : clone();
-    return result..setItemData(index, data);
-  }
-
-  void setItemData(int index, Object data);
-
-  MutableSource clone();
-}
-
-abstract class ImmutableSource extends AdapterSource {
-  @mustCallSuper
-  @override
-  ImmutableSource updateItemData(int index, Object data, bool isStateCopied) =>
-      setItemData(index, data);
-
-  ImmutableSource setItemData(int index, Object data);
-
-  ImmutableSource clone();
-}
-
+/// template is a map, driven by array
+/// Use [FlowAdapter.source] instead of [SourceFlowAdapter]
+/// see in example
 /// template is a map, driven by source
-class SourceFlowAdapter<T extends AdapterSource> extends Logic<T>
-    with RecycleContextMixin<T> {
+@deprecated
+class SourceFlowAdapter<T extends ItemListLike> extends Logic<T> with RecycleContextMixin<T> {
   final Map<String, AbstractLogic<Object>> pool;
 
   SourceFlowAdapter({
-    @required this.pool,
-    ReducerFilter<T> filter,
-    Reducer<T> reducer,
-    Effect<T> effect,
+    required this.pool,
+    ReducerFilter<T>? filter,
+    Reducer<T>? reducer,
+    Effect<T>? effect,
 
     /// implement [StateKey] in T instead of using key in Logic.
     /// class T implements StateKey {
     ///   Object _key = UniqueKey();
     ///   Object key() => _key;
     /// }
-    @deprecated Object Function(T) key,
+    @deprecated  Object Function(T)? key,
   }) : super(
           reducer: _dynamicReducer(reducer, pool),
           effect: effect,
@@ -69,17 +37,17 @@ class SourceFlowAdapter<T extends AdapterSource> extends Logic<T>
 
   @override
   ListAdapter buildAdapter(ContextSys<T> ctx) {
-    final AdapterSource adapterSource = ctx.state;
+    final ItemListLike adapterSource = ctx.state;
     assert(adapterSource != null);
 
-    final RecycleContext<T> recycleCtx = ctx;
+    final RecycleContext<T> recycleCtx = ctx as RecycleContext<T>;
     final List<ListAdapter> adapters = <ListAdapter>[];
 
     recycleCtx.markAllUnused();
 
     for (int index = 0; index < adapterSource.itemCount; index++) {
       final String type = adapterSource.getItemType(index);
-      final AbstractLogic<Object> result = pool[type];
+      final AbstractLogic<Object>? result = pool[type];
 
       assert(
           result != null, 'Type of $type has not benn registered in the pool.');
@@ -98,7 +66,9 @@ class SourceFlowAdapter<T extends AdapterSource> extends Logic<T>
               enhancer: recycleCtx.enhancer,
             ),
           );
-          adapters.add(result.buildAdapter(subCtx));
+
+          /// hack to reduce adapter's rebuilding
+          adapters.add(memoizeListAdapter(result, subCtx));
         } else if (result is AbstractComponent<Object>) {
           adapters.add(ListAdapter((BuildContext buildContext, int _) {
             return result.buildComponent(
@@ -118,14 +88,15 @@ class SourceFlowAdapter<T extends AdapterSource> extends Logic<T>
 }
 
 /// Generate reducer for List<ItemBean> and combine them into one
-Reducer<T> _dynamicReducer<T extends AdapterSource>(
-  Reducer<T> reducer,
+/// 可空
+Reducer<T>? _dynamicReducer<T extends ItemListLike>(
+  Reducer<T>? reducer,
   Map<String, AbstractLogic<Object>> pool,
 ) {
-  final Reducer<T> dyReducer = (AdapterSource state, Action action) {
-    AdapterSource copy;
+  final Reducer<T> dyReducer = (ItemListLike state, Action action) {
+    ItemListLike? copy;
     for (int i = 0; i < state.itemCount; i++) {
-      final AbstractLogic<Object> result = pool[state.getItemType(i)];
+      final AbstractLogic<Object>? result = pool[state.getItemType(i)];
       if (result != null) {
         final Object oldData = state.getItemData(i);
         final Object newData = result.onReducer(oldData, action);
@@ -134,10 +105,13 @@ Reducer<T> _dynamicReducer<T extends AdapterSource>(
         }
       }
     }
-    return copy ?? state;
+    if (copy == null) {
+      return state is T ? state : null;
+    }
+    return copy is T ? copy : null;
   };
 
-  return combineReducers(<Reducer<T>>[reducer, dyReducer]);
+  return combineReducers(<Reducer<T>?>[reducer, dyReducer]);
 }
 
 /// Define itemBean how to get state with connector
@@ -146,13 +120,13 @@ Reducer<T> _dynamicReducer<T extends AdapterSource>(
 /// [_isSimilar] return false we should use cache state before reducer invoke.
 /// for reducer change state immediately but sub component will refresh on next
 /// frame. in this time the sub component will use cache state.
-Get<Object> _subGetter(Get<AdapterSource> getter, int index) {
-  final AdapterSource curState = getter();
+Get<Object> _subGetter(Get<ItemListLike> getter, int index) {
+  final ItemListLike curState = getter();
   String type = curState.getItemType(index);
   Object data = curState.getItemData(index);
 
   return () {
-    final AdapterSource newState = getter();
+    final ItemListLike newState = getter();
 
     /// Either all sub-components use cache or not.
     if (newState != null && newState.itemCount > index) {
@@ -174,11 +148,10 @@ Get<Object> _subGetter(Get<AdapterSource> getter, int index) {
   };
 }
 
-bool _couldReuse({String typeA, String typeB, Object dataA, Object dataB}) {
+bool _couldReuse({String? typeA, String? typeB, Object? dataA, Object? dataB}) {
   return typeA != typeB
       ? false
       : dataA.runtimeType != dataB.runtimeType
           ? false
-          : (dataA is StateKey ? dataA.key() : null) ==
-              (dataB is StateKey ? dataB.key() : null);
+          : (dataA is StateKey ? dataA.key() : null) == (dataB is StateKey ? dataB.key() : null);
 }

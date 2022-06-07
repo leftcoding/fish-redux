@@ -10,12 +10,12 @@ class RecycleContext<T> extends AdapterContext<T> {
   final Map<Object, int> _usedIndexMap = <Object, int>{};
 
   RecycleContext({
-    @required AbstractAdapter<T> logic,
-    @required @required Store<Object> store,
-    @required BuildContext buildContext,
-    @required Get<T> getState,
-    @required DispatchBus bus,
-    @required Enhancer<Object> enhancer,
+    required AbstractAdapter<T> logic,
+    @required required Store<Object> store,
+    required BuildContext buildContext,
+    required Get<T> getState,
+    required DispatchBus bus,
+    required Enhancer<Object> enhancer,
   }) : super(
           logic: logic,
           store: store,
@@ -27,8 +27,8 @@ class RecycleContext<T> extends AdapterContext<T> {
 
   @override
   void onLifecycle(Action action) {
-    _cachedMap.forEach((Object key, List<ContextSys<Object>> list) {
-      for (ContextSys<Object> sub in list) {
+    _cachedMap.forEach((Object key, List<ContextSys<Object?>> list) {
+      for (ContextSys<Object?> sub in list) {
         sub.onLifecycle(action);
       }
     });
@@ -46,7 +46,7 @@ class RecycleContext<T> extends AdapterContext<T> {
         _cachedMap[key] ??= <ContextSys<Object>>[];
 
     if (length > list.length) {
-      _cachedMap[key].add(
+      _cachedMap[key]?.add(
         create()
           ..setParent(this)
           ..onLifecycle(LifecycleCreator.initState()),
@@ -77,15 +77,16 @@ mixin RecycleContextMixin<T> implements AbstractAdapter<T> {
     Store<Object> store,
     BuildContext buildContext,
     Get<T> getState, {
-    @required DispatchBus bus,
-    @required Enhancer<Object> enhancer,
+    required DispatchBus bus,
+    required Enhancer<Object> enhancer,
   }) {
     assert(bus != null && enhancer != null);
+
     return RecycleContext<T>(
       logic: this,
       store: store,
       buildContext: buildContext,
-      getState: getState,
+      getState: asGetter<T>(getState),
       bus: bus,
       enhancer: enhancer,
     );
@@ -101,7 +102,8 @@ ListAdapter combineListAdapters(Iterable<ListAdapter> adapters) {
     /// The result is AbstractComponent
     return ListAdapter(
       (BuildContext buildContext, final int index) =>
-          list[index].itemBuilder(buildContext, 0),
+      ///todo(不确定)
+          list[index].itemBuilder!(buildContext, 0),
       list.length,
     );
   } else if (list.length == 1) {
@@ -123,8 +125,37 @@ ListAdapter combineListAdapters(Iterable<ListAdapter> adapters) {
         xIndex++;
       }
       assert(xIndex < list.length);
-      return list[xIndex].itemBuilder(buildContext, yIndex);
+      ///todo(不确定)
+      return list[xIndex].itemBuilder!(buildContext, yIndex);
     },
     maxItemCount,
   );
+}
+
+ListAdapter memoizeListAdapter(
+  AbstractAdapterBuilder<Object> result,
+  ContextSys<Object> subCtx,
+) {
+  final Object newState = subCtx.state;
+  if (subCtx.extra['@last-state'] != newState) {
+    subCtx.extra['@last-state'] = newState;
+    subCtx.extra['@last-adapter'] =
+       ///todo(不确定)
+        _memoizeListAdapter(result.buildAdapter(subCtx)!);
+  }
+
+  return subCtx.extra['@last-adapter'] as ListAdapter;
+}
+
+ListAdapter _memoizeListAdapter(ListAdapter adapter) {
+  if (adapter.itemCount > 0) {
+    final List<Widget?> memoized =
+        List<Widget?>.filled(adapter.itemCount, null, growable: false);
+    return ListAdapter((BuildContext context, int index) {
+      ///todo(不确定)
+      return (memoized[index] ??= adapter.itemBuilder!(context, index));
+    }, adapter.itemCount);
+  } else {
+    return adapter;
+  }
 }

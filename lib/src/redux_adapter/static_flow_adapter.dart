@@ -5,32 +5,36 @@ import '../redux_component/redux_component.dart';
 import '../utils/utils.dart';
 import 'recycle_context.dart';
 
+/// template is a map, driven by array
+/// Use [FlowAdapter.static] instead of [StaticFlowAdapter]
+/// see in example
 /// template is an array, driven by map like
+@deprecated
 class StaticFlowAdapter<T> extends Logic<T>
     with RecycleContextMixin<T>
     implements AbstractAdapter<T> {
   final List<Dependent<T>> _slots;
 
   StaticFlowAdapter({
-    @required List<Dependent<T>> slots,
-    Reducer<T> reducer,
-    Effect<T> effect,
-    ReducerFilter<T> filter,
+    required List<Dependent<T>> slots,
+    Reducer<T>? reducer,
+    Effect<T>? effect,
+    ReducerFilter<T>? filter,
 
     /// implement [StateKey] in T instead of using key in Logic.
     /// class T implements StateKey {
     ///   Object _key = UniqueKey();
     ///   Object key() => _key;
     /// }
-    @deprecated Object Function(T) key,
+    @deprecated  Object Function(T)? key,
   })  : assert(slots != null),
-        _slots = Collections.compact(slots),
+        _slots = Collections.compact(slots)!,
         super(
-          reducer: combineReducers(<Reducer<T>>[
+          reducer: combineReducers(<Reducer<T>?>[
             reducer,
             combineSubReducers(
               slots.map(
-                (Dependent<T> dependent) => dependent?.createSubReducer(),
+                (Dependent<T>? dependent) => dependent?.createSubReducer(),
               ),
             )
           ]),
@@ -43,7 +47,7 @@ class StaticFlowAdapter<T> extends Logic<T>
 
   @override
   ListAdapter buildAdapter(ContextSys<T> ctx) {
-    final RecycleContext<T> recycleCtx = ctx;
+    final RecycleContext<T> recycleCtx = ctx as RecycleContext<T>;
     final List<ListAdapter> adapters = <ListAdapter>[];
 
     recycleCtx.markAllUnused();
@@ -63,8 +67,9 @@ class StaticFlowAdapter<T> extends Logic<T>
               enhancer: recycleCtx.enhancer,
             );
           });
-          final ListAdapter subAdapter = dependent.buildAdapter(subCtx);
-          adapters.add(subAdapter);
+
+          /// hack to reduce adapter's rebuilding
+          adapters.add(memoizeListAdapter(dependent, subCtx));
         }
       } else if (subObject != null) {
         adapters.add(ListAdapter((BuildContext buildContext, int index) {

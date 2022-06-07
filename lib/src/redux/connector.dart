@@ -19,22 +19,25 @@ abstract class ImmutableConn<T, P> implements AbstractConnector<T, P> {
 
   T set(T state, P subState);
 
+  /// 可空 reducer?
   @override
-  SubReducer<T> subReducer(Reducer<P> reducer) {
-    return (T state, Action action, bool isStateCopied) {
-      final P props = get(state);
-      if (props == null) {
-        return state;
-      }
-      final P newProps = reducer(props, action);
-      final bool hasChanged = !identical(newProps, props);
-      if (hasChanged) {
-        final T result = set(state, newProps);
-        assert(result != null, 'Expected to return a non-null value.');
-        return result;
-      }
-      return state;
-    };
+  SubReducer<T>? subReducer(Reducer<P>? reducer) {
+    return reducer == null
+        ? null
+        : (T state, Action action, bool isStateCopied) {
+            final P? props = get(state);
+            if (props == null) {
+              return state;
+            }
+            final P newProps = reducer.call(props, action)!;
+            final bool hasChanged = !identical(newProps, props);
+            if (hasChanged) {
+              final T result = set(state, newProps);
+              assert(result != null, 'Expected to return a non-null value.');
+              return result;
+            }
+            return state;
+          };
   }
 }
 
@@ -80,20 +83,24 @@ abstract class MutableConn<T, P> implements AbstractConnector<T, P> {
 
   void set(T state, P subState);
 
+  /// 可空
   @override
-  SubReducer<T> subReducer(Reducer<P> reducer) {
-    return (T state, Action action, bool isStateCopied) {
-      final P props = get(state);
-      if (props == null) {
-        return state;
-      }
-      final P newProps = reducer(props, action);
-      final bool hasChanged = newProps != props;
-      final T copy = (hasChanged && !isStateCopied) ? _clone<T>(state) : state;
-      if (hasChanged) {
-        set(copy, newProps);
-      }
-      return copy;
-    };
+  SubReducer<T>? subReducer(Reducer<P>? reducer) {
+    return reducer == null
+        ? null
+        : (T state, Action action, bool isStateCopied) {
+            final P? props = get(state);
+            if (props == null) {
+              return state;
+            }
+            final P newProps = reducer(props, action)!;
+            final bool hasChanged = newProps != props;
+            final T copy =
+                (hasChanged && !isStateCopied) ? _clone<T>(state) : state;
+            if (hasChanged) {
+              set(copy, newProps);
+            }
+            return copy;
+          };
   }
 }
