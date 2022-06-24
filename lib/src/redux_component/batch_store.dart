@@ -29,18 +29,17 @@ mixin _BatchNotify<T> on Store<T> {
   }
 
   bool isInSuitablePhase() {
-    return SchedulerBinding.instance != null &&
-        SchedulerBinding.instance?.schedulerPhase !=
+    return SchedulerBinding.instance.schedulerPhase !=
             SchedulerPhase.persistentCallbacks &&
-        !(SchedulerBinding.instance?.schedulerPhase == SchedulerPhase.idle &&
-            WidgetsBinding.instance?.renderViewElement == null);
+        !(SchedulerBinding.instance.schedulerPhase == SchedulerPhase.idle &&
+            WidgetsBinding.instance.renderViewElement == null);
   }
 
   void _batch() {
     if (!isInSuitablePhase()) {
       if (!_isBatching) {
         _isBatching = true;
-        SchedulerBinding.instance?.addPostFrameCallback((Duration duration) {
+        SchedulerBinding.instance.addPostFrameCallback((Duration duration) {
           if (_isBatching) {
             _batch();
           }
